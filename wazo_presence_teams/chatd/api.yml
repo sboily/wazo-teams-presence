@@ -1,0 +1,23 @@
+paths:
+  /users/{user_uuid}/teams/presence:
+    post:
+      summary: Receive presence from Microsoft Teams subscription
+      description: '**Required NO ACL:**
+        Presence from Teams.'
+      consumes:
+        - application/x-www-form-urlencoded
+      parameters:
+      - $ref: '#/parameters/UserUUID'
+      tags:
+      - microsoft
+      - teams
+      responses:
+        '200':
+          description: Presence has been received
+parameters:
+  UserUUID:
+    name: user_uuid
+    in: path
+    description: UUID of the user
+    required: true
+    type: string

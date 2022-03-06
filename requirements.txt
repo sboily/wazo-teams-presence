@@ -1,0 +1,2 @@
+https://github.com/wazo-platform/wazo-chatd-client/archive/master.zip
+pyyaml==3.13

@@ -1,0 +1,31 @@
+#!/bin/bash
+# Copyright 2022 Wazo Team (see the AUTHORS file)
+# SPDX-License-Identifier: GPLv3
+
+
+case "$1" in
+    build)
+	python3 setup.py bdist
+    ;;
+
+    package)
+	tar xvf dist/wazo-presence-teams-*.tar.gz -C ${pkgdir}
+	cp -R etc ${pkgdir}/
+    ;;
+
+    install)
+        systemctl restart wazo-chatd
+    ;;
+
+    uninstall)
+        systemctl restart wazo-chatd
+    ;;
+
+    postrm)
+    ;;
+
+    *)
+        echo "$0 called with unknown argument '$1'" >&2
+        exit 1
+    ;;
+esac

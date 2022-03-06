@@ -1,0 +1,9 @@
+*.egg-info
+*.pyc
+*.swp
+.coverage
+.tox
+build
+coverage.xml
+dist
+unit-tests.xml
