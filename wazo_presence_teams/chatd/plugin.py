@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from flask import request, Response
+from flask_restful import Resource
 from wazo_chatd_client import Client as ChatdClient
 
 

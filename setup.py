@@ -18,6 +18,9 @@ setup(
     url=metadata['homepage'],
     packages=find_packages(),
     include_package_data=True,
+    package_data={
+        'wazo_presence_teams': ['*/api.yml'],
+    },
     entry_points={
         'wazo_chatd.plugins': ['presence_teams = wazo_presence_teams.chatd.plugin:Plugin'],
     },
