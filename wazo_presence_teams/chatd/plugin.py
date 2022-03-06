@@ -10,8 +10,24 @@ class TeamsChatdService:
     def __init__(self, chatd_client):
         self._chatd = chatd_client
 
-    def update_presence(self, presence, user_uuid):
-        return self._chatd.update(presence)
+    def update_presence(self, data, user_uuid):
+        state = data['value'][0]['resourceData']['availability']
+        status = data['value'][0]['resourceData']['activity']
+        if state == 'Available':
+            state = 'available'
+        elif state == 'Busy':
+            state = 'unavailable'
+        elif state == 'Away':
+            state = 'away'
+        else:
+            state = 'available'
+            status = 'State from teams are not supported'
+        presence = {
+            "uuid": user_uuid,
+            "state": state,
+            "status": status
+        }
+        return self._chatd.user_presences.update(presence)
 
 
 class TeamsChatdResource(Resource):
@@ -23,7 +39,7 @@ class TeamsChatdResource(Resource):
         if validationToken:
             return Response(validationToken, mimetype='text/plain')
 
-        self.chatd_service.update_presence(request.form['availability'], user_uuid)
+        self.chatd_service.update_presence(request.get_json(), user_uuid)
         return '', 200
 
 

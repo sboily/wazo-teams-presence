@@ -14,10 +14,12 @@ case "$1" in
     ;;
 
     install)
+	wazo-auth-keys service update
         systemctl restart wazo-chatd
     ;;
 
     uninstall)
+	wazo-auth-keys service update
         systemctl restart wazo-chatd
     ;;
 
