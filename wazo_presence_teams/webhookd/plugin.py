@@ -1,14 +1,12 @@
 # Copyright 2022 The Wazo Authors  (see the AUTHORS file)
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-import iso8601
 import requests
 import logging
 import uuid
 import json
 
-from time import gmtime, strftime
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pymemcache.client.base import Client as Memcached
 
 from wazo_auth_client import Client as AuthClient
@@ -237,13 +235,11 @@ class TeamsPresence:
             print(r.text)
 
     def set_subscription(self, userId):
-        date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=+60)
-        expiration = date.isoformat().replace("+00:00", "Z")
         data = {
             "changeType": "updated",
             "notificationUrl": f"https://{self.domain}/api/chatd/1.0/users/{self.user_uuid}/teams/presence",
             "resource": f"/communications/presences/{userId}",
-            "expirationDateTime": expiration,
+            "expirationDateTime": self._expiration(60),
             "clientState": "SecretClientState"
         }
         r = requests.post(f"{self.graph}/subscriptions", json=data, headers=self._headers())
@@ -256,10 +252,8 @@ class TeamsPresence:
             print(r.json())
 
     def renew_subscription(self, subscriptionId):
-        date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=+60)
-        expiration = date.isoformat().replace("+00:00", "Z")
         data = {
-            "expirationDateTime": expiration
+            "expirationDateTime": self._expiration(60)
         }
         r = requests.patch(f"{self.graph}/subscriptions/{subscriptionId}", json=data, headers=self._headers())
         if r.status_code != 200:
@@ -283,3 +277,7 @@ class TeamsPresence:
             'Authorization': 'Bearer {0}'.format(self.access_token),
             'Accept': 'application/json'
         }
+
+    def _expiration(self, seconds):
+        date = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+        return date.isoformat().replace("+00:00", "Z")
