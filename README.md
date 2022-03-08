@@ -2,7 +2,7 @@
 
 Add endpoint to get presence from teams from subscription and set it to Wazo.
 
-[![Check the demo]](https://youtu.be/3wD8MoKyaDk)
+[Check the demo](https://youtu.be/3wD8MoKyaDk)
 
 
 # Installation
