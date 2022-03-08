@@ -7,3 +7,5 @@ confd:
   https: false
 memcached:
   uri: 127.0.0.1:11211
+microsoft:
+  appId: '<appId>'

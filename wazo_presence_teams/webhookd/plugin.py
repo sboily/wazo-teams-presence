@@ -5,6 +5,9 @@ import requests
 import logging
 import uuid
 import json
+import threading
+import time
+import iso8601
 
 from datetime import datetime, timezone, timedelta
 from pymemcache.client.base import Client as Memcached
@@ -16,6 +19,55 @@ from wazo_webhookd.services.helpers import HookExpectedError
 
 
 logger = logging.getLogger(__name__)
+
+
+class SubscriptionRenewer:
+    def __init__(self, config, cache):
+        self._cache = cache
+        self._config = config
+        self._tombstone = threading.Event()
+        self._thread = threading.Thread(target=self._loop)
+        self._thread.daemon = True
+        self.users = []
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._tombstone.set()
+        self._thread.join()
+        self._tombstone.clear()
+
+    def add_user(self, user_uuid):
+        self.users.append(user_uuid)
+
+    def _loop(self):
+        while not self._tombstone.is_set():
+            for user in self.users:
+                user_cache = self._cache.get(user)
+                subscriptionId = user_cache['subscriptionId']
+                expiration = user_cache['expiration']
+                if self._is_expired(expiration):
+                    logger.info("[microsoft teams presence] Subscription for presence is expired.")
+                    access_token = user_cache['access_token']
+                    external_config = user_cache['config']
+                    cache = {
+                        "subscriptionId": subscriptionId,
+                        "expiration": str(datetime.now(timezone.utc)),
+                        "access_token": access_token,
+                        "config": external_config
+                    }
+                    teams = TeamsPresence(self._config, access_token, external_config)
+                    teams.renew_subscription(subscriptionId)
+                    self._cache.update(user, cache)
+            time.sleep(1)
+
+    def _is_expired(self, expiration):
+        now = datetime.now(timezone.utc)
+        duration = int((now - iso8601.parse_date(expiration)).total_seconds())
+        if duration > 55:
+            return True
+        return False
 
 
 class Service:
@@ -40,7 +92,16 @@ class Service:
             callback=self.on_external_auth_deleted,
         )
 
+        self.subcription_renewer = SubscriptionRenewer(
+            self._config,
+            UserExternalConfigCache(
+                get_memcached(self._config['memcached'])
+            )
+        )
+        self.subcription_renewer.start()
+
         logger.info("[microsoft teams presence] Plugin started")
+
 
     def on_external_auth_added(self, body, event):
         if body['data'].get('external_auth_name') == 'microsoft':
@@ -52,33 +113,29 @@ class Service:
                 user_uuid,
                 tenant_uuid,
             )
-            teams = TeamsPresence(self._config, external_tokens, external_config)
-            teams.set_subscription(teams.get_user())
-            logger.info(
-                "[microsoft teams presence] User registered: %s/%s",
-                tenant_uuid,
-                user_uuid,
-            )
+            teams = TeamsPresence(self._config, external_tokens['access_token'], external_config)
+            subscriptionId = teams.set_subscription(teams.get_user())
 
+            logger.info(f"[microsoft teams presence] User registered: {tenant_uuid}/{user_uuid}")
+
+            self.subcription_renewer.add_user(user_uuid)
             user_external_config_cache = UserExternalConfigCache(
                 get_memcached(self._config['memcached'])
             )
-            user_external_config_cache.add(user_uuid, external_config)
+            cache = {
+                "subscriptionId": subscriptionId,
+                "expiration": str(datetime.now(timezone.utc)),
+                "access_token": external_tokens['access_token'],
+                "config": external_config
+            }
+            user_external_config_cache.add(user_uuid, cache)
 
     def on_external_auth_deleted(self, body, event):
         if body['data'].get('external_auth_name') == 'microsoft':
             user_uuid = body['data']['user_uuid']
             tenant_uuid = self.get_tenant_uuid(user_uuid)
 
-            subscriptions = []
-
-            for subscription in subscriptions:
-                self.subscription_service.delete(subscription.uuid)
-                logger.info(
-                    '[microsoft teams presence] User unregistered: %s/%s',
-                    tenant_uuid,
-                    user_uuid,
-                )
+            logger.info(f"[microsoft teams presence] User unregistered: {tenant_uuid}/{user_uuid}")
 
             user_external_config_cache = UserExternalConfigCache(
                 get_memcached(self._config['memcached'])
@@ -147,9 +204,9 @@ class Service:
         user_external_config_cache = UserExternalConfigCache(
             get_memcached(config['memcached'])
         )
-        external_config = user_external_config_cache.get(user_uuid)
+        external_config = user_external_config_cache.get(user_uuid)['config']
         external_token = cls.get_external_token(config, user_uuid)
-        teams = TeamsPresence(config, external_token, external_config)
+        teams = TeamsPresence(config, external_token['access_token'], external_config)
 
         data = event.get('data')
         notification_type = event.get('name')
@@ -186,6 +243,9 @@ class UserExternalConfigCache:
     def add(self, user_uuid, data):
         self.mem.add(user_uuid, data)
 
+    def update(self, user_uuid, data):
+        self.mem.set(user_uuid, data)
+
     def get(self, user_uuid):
         return self.mem.get(user_uuid)
 
@@ -194,12 +254,13 @@ class UserExternalConfigCache:
 
 
 class TeamsPresence:
-    def __init__(self, config, external_tokens, external_config):
-        self.sessionId = "f82a3e59-8e7a-4c40-86df-05ef17fdc7aa"
+    def __init__(self, config, access_tokens, external_config):
+        self.sessionId = config['microsoft']['appId']
         self.graph = "https://graph.microsoft.com/v1.0"
         self.domain = external_config['domain']
         self.user_uuid = external_config['user_uuid']
-        self.access_token = external_tokens['access_token']
+        self.access_token = access_tokens
+        self.expiration_time = 60
 
     def get_user(self):
         r = requests.get(f"{self.graph}/me", headers=self._headers())
@@ -239,26 +300,30 @@ class TeamsPresence:
             "changeType": "updated",
             "notificationUrl": f"https://{self.domain}/api/chatd/1.0/users/{self.user_uuid}/teams/presence",
             "resource": f"/communications/presences/{userId}",
-            "expirationDateTime": self._expiration(60),
+            "expirationDateTime": self._expiration(self.expiration_time),
             "clientState": "SecretClientState"
         }
         r = requests.post(f"{self.graph}/subscriptions", json=data, headers=self._headers())
         if r.status_code == 409:
-            print("A subscripton already exists.")
+            logger.info(f"[microsoft teams presence] A subscription already exists.")
+            return self.list_subscriptions()
         elif r.status_code == 201:
-            print(f"Subscription {r.json()['id']} created")
+            logger.info(f"[microsoft teams presence] Subscription {r.json()['id']} created")
+            return r.json()['id']
         elif r.status_code != 200:
             print(r.status_code)
             print(r.json())
 
     def renew_subscription(self, subscriptionId):
         data = {
-            "expirationDateTime": self._expiration(60)
+            "expirationDateTime": self._expiration(self.expiration_time)
         }
         r = requests.patch(f"{self.graph}/subscriptions/{subscriptionId}", json=data, headers=self._headers())
         if r.status_code != 200:
             print(r.status_code)
             print(r.text)
+        else:
+            logger.info(f"[microsoft teams presence] A subscription has been renewed.")
 
     def delete_subscription(self, subscriptionId):
         r = requests.delete(f"{self.graph}/subscriptions/{subscriptionId}", headers=self._headers())

@@ -7,6 +7,8 @@ plugin_format_version: 1
 min_wazo_version: 22.03
 debian_depends:
   - wazo-chatd-client-python3
+  - memcached
+  - python3-pymemcache
 tags:
   - beta
   - connector
