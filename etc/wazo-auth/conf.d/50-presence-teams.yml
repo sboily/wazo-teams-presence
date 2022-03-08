@@ -1,0 +1,10 @@
+microsoft:
+  authorization_base_url: 'https://login.microsoftonline.com/<tenantId>/oauth2/v2.0/authorize'
+  token_url: 'https://login.microsoftonline.com/<tenantId>/oauth2/v2.0/token'
+  scope: [
+    'offline_access',
+    'Contacts.Read',
+    'Presence.Read',
+    'Presence.Read.All',
+    'Presence.ReadWrite'
+  ]
