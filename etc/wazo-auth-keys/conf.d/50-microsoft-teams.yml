@@ -1,0 +1,12 @@
+wazo-chatd:
+  acl:
+    - 'chatd.users.*.presences.update'
+    - 'auth.tenants.read'
+wazo-webhookd:
+  system_user: wazo-webhookd
+  acl:
+    - 'auth.*.external.config.read'
+    - 'auth.users.*.external.*.read'
+    - 'auth.users.*.read'
+    - 'auth.tenants.read'
+    - 'confd.ingresses.http.read'

@@ -23,5 +23,8 @@ setup(
     },
     entry_points={
         'wazo_chatd.plugins': ['presence_teams = wazo_presence_teams.chatd.plugin:Plugin'],
+        'wazo_webhookd.services': [
+            'presence_teams = wazo_presence_teams.webhookd.plugin:Service',
+        ],
     },
 )

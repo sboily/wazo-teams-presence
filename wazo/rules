@@ -16,11 +16,13 @@ case "$1" in
     install)
 	wazo-auth-keys service update
         systemctl restart wazo-chatd
+        systemctl restart wazo-webhookd
     ;;
 
     uninstall)
 	wazo-auth-keys service update
         systemctl restart wazo-chatd
+        systemctl restart wazo-webhookd
     ;;
 
     postrm)

@@ -1,0 +1,9 @@
+enabled_services:
+  presence_teams: true
+confd:
+  host: localhost
+  port: 9486
+  prefix: null
+  https: false
+memcached:
+  uri: 127.0.0.1:11211
