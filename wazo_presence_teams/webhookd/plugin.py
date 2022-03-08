@@ -21,6 +21,9 @@ from wazo_webhookd.services.helpers import HookExpectedError
 logger = logging.getLogger(__name__)
 
 
+EXPIRATION = 3600
+
+
 class SubscriptionRenewer:
     def __init__(self, config, cache):
         self._cache = cache
@@ -45,6 +48,8 @@ class SubscriptionRenewer:
         while not self._tombstone.is_set():
             for user in self.users:
                 user_cache = self._cache.get(user)
+                if not user_cache:
+                    return
                 subscriptionId = user_cache['subscriptionId']
                 expiration = user_cache['expiration']
                 if self._is_expired(expiration):
@@ -65,7 +70,7 @@ class SubscriptionRenewer:
     def _is_expired(self, expiration):
         now = datetime.now(timezone.utc)
         duration = int((now - iso8601.parse_date(expiration)).total_seconds())
-        if duration > 55:
+        if duration > EXPIRATION - 5:
             return True
         return False
 
@@ -260,7 +265,7 @@ class TeamsPresence:
         self.domain = external_config['domain']
         self.user_uuid = external_config['user_uuid']
         self.access_token = access_tokens
-        self.expiration_time = 60
+        self.expiration_time = EXPIRATION
 
     def get_user(self):
         r = requests.get(f"{self.graph}/me", headers=self._headers())
