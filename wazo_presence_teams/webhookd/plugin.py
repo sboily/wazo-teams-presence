@@ -76,11 +76,12 @@ class SubscriptionRenewer:
             time.sleep(1)
 
     def _is_expired(self, expiration):
-        now = datetime.now(timezone.utc)
-        duration = int((now - iso8601.parse_date(expiration)).total_seconds())
-        if duration > EXPIRATION - 5:
-            logger.info("[microsoft teams presence] Subscription for presence is expired.")
-            return True
+        if expiration:
+            now = datetime.now(timezone.utc)
+            duration = int((iso8601.parse_date(expiration) - now).total_seconds())
+            if duration - 5 < 0:
+                logger.info("[microsoft teams presence] Subscription for presence is expired.")
+                return True
         return False
 
 
@@ -128,7 +129,7 @@ class Service:
                 tenant_uuid,
             )
             teams = TeamsPresence(self._config, external_tokens['access_token'], external_config)
-            subscriptionId = teams.set_subscription(teams.get_user())
+            subscriptionId, expiration = teams.set_subscription(teams.get_user())
 
             logger.info(f"[microsoft teams presence] User registered: {tenant_uuid}/{user_uuid}")
 
@@ -138,7 +139,7 @@ class Service:
             )
             cache = {
                 "subscriptionId": subscriptionId,
-                "expiration": str(datetime.now(timezone.utc)),
+                "expiration": expiration,
                 "access_token": external_tokens['access_token'],
                 "config": external_config
             }
@@ -327,10 +328,11 @@ class TeamsPresence:
         r = requests.post(f"{self.graph}/subscriptions", json=data, headers=self._headers())
         if r.status_code == 409:
             logger.info(f"[microsoft teams presence] A subscription already exists.")
-            return self.list_subscriptions()
+            subscriptionId, expiration = self.list_subscriptions()
+            return (subscriptionId, expiration)
         elif r.status_code == 201:
             logger.info(f"[microsoft teams presence] Subscription {r.json()['id']} created")
-            return r.json()['id']
+            return (r.json()['id'], r.json()['expirationDateTime'])
         elif r.status_code != 200:
             print(r.status_code)
             print(r.json())
@@ -357,7 +359,10 @@ class TeamsPresence:
         r = requests.get(f"{self.graph}/subscriptions", headers=self._headers())
         if r.status_code != 200:
             print(r.text)
-        return r.json()['value']
+        elif r.status_code == 200:
+            data = r.json()['value'][0]
+            return (data['id'], data['expirationDateTime'])
+        return (None, None)
 
     def _headers(self):
         return {
