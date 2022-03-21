@@ -31,7 +31,7 @@ class SubscriptionRenewer:
         self._tombstone = threading.Event()
         self._thread = threading.Thread(target=self._loop)
         self._thread.daemon = True
-        self.users = []
+        self.users = self._users() or []
 
     def start(self):
         self._thread.start()
@@ -41,19 +41,27 @@ class SubscriptionRenewer:
         self._thread.join()
         self._tombstone.clear()
 
+    def _users(self):
+        return self._cache.get_users()
+
     def add_user(self, user_uuid):
         self.users.append(user_uuid)
+        self._cache.update_users(self.users)
+
+    def delete_user(self, user_uuid):
+        self.users.remove(user_uuid)
+        self._cache.update_users(self.users)
 
     def _loop(self):
         while not self._tombstone.is_set():
             for user in self.users:
                 user_cache = self._cache.get(user)
                 if not user_cache:
-                    return
+                    self.delete_user(user)
+                    continue
                 subscriptionId = user_cache['subscriptionId']
                 expiration = user_cache['expiration']
                 if self._is_expired(expiration):
-                    logger.info("[microsoft teams presence] Subscription for presence is expired.")
                     access_token = user_cache['access_token']
                     external_config = user_cache['config']
                     cache = {
@@ -71,6 +79,7 @@ class SubscriptionRenewer:
         now = datetime.now(timezone.utc)
         duration = int((now - iso8601.parse_date(expiration)).total_seconds())
         if duration > EXPIRATION - 5:
+            logger.info("[microsoft teams presence] Subscription for presence is expired.")
             return True
         return False
 
@@ -145,6 +154,7 @@ class Service:
             user_external_config_cache = UserExternalConfigCache(
                 get_memcached(self._config['memcached'])
             )
+
             user_external_config_cache.delete(user_uuid)
 
     def get_tenant_uuid(self, user_uuid):
@@ -257,6 +267,12 @@ class UserExternalConfigCache:
     def delete(self, user_uuid):
         self.mem.delete(user_uuid)
 
+    def get_users(self):
+        return self.mem.get('users')
+
+    def update_users(self, data):
+        self.mem.set('users', data)
+
 
 class TeamsPresence:
     def __init__(self, config, access_tokens, external_config):
@@ -334,6 +350,8 @@ class TeamsPresence:
         r = requests.delete(f"{self.graph}/subscriptions/{subscriptionId}", headers=self._headers())
         if r.status_code != 204:
             print(r.text)
+        else:
+            logger.info(f"[microsoft teams presence] A subscription has been removed.")
 
     def list_subscriptions(self):
         r = requests.get(f"{self.graph}/subscriptions", headers=self._headers())
