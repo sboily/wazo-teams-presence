@@ -64,14 +64,14 @@ class SubscriptionRenewer:
                 if self._is_expired(expiration):
                     access_token = user_cache['access_token']
                     external_config = user_cache['config']
+                    teams = TeamsPresence(self._config, access_token, external_config)
+                    subscriptionId, expiration = teams.renew_subscription(subscriptionId)
                     cache = {
                         "subscriptionId": subscriptionId,
-                        "expiration": str(datetime.now(timezone.utc)),
+                        "expiration": expiration,
                         "access_token": access_token,
                         "config": external_config
                     }
-                    teams = TeamsPresence(self._config, access_token, external_config)
-                    teams.renew_subscription(subscriptionId)
                     self._cache.update(user, cache)
             time.sleep(1)
 
@@ -156,6 +156,13 @@ class Service:
                 get_memcached(self._config['memcached'])
             )
 
+            user_cache = user_external_config_cache.get(user_uuid)
+            if user_cache:
+                subscriptionId = user_cache['subscriptionId']
+                access_token = user_cache['access_token']
+                external_config = user_cache['config']
+                teams = TeamsPresence(self._config, access_token, external_config)
+                teams.delete_subscription(subscriptionId)
             user_external_config_cache.delete(user_uuid)
 
     def get_tenant_uuid(self, user_uuid):
@@ -338,15 +345,18 @@ class TeamsPresence:
             print(r.json())
 
     def renew_subscription(self, subscriptionId):
+        expiration = self._expiration(self.expiration_time)
         data = {
-            "expirationDateTime": self._expiration(self.expiration_time)
+            "expirationDateTime": expiration
         }
         r = requests.patch(f"{self.graph}/subscriptions/{subscriptionId}", json=data, headers=self._headers())
         if r.status_code != 200:
             print(r.status_code)
             print(r.text)
-        else:
+        elif r.status_code == 200:
             logger.info(f"[microsoft teams presence] A subscription has been renewed.")
+            return (subscriptionId, expiration)
+        return (None, None)
 
     def delete_subscription(self, subscriptionId):
         r = requests.delete(f"{self.graph}/subscriptions/{subscriptionId}", headers=self._headers())
