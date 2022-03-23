@@ -24,6 +24,16 @@ logger = logging.getLogger(__name__)
 EXPIRATION = 3600
 
 
+class UserCache:
+    def __init__(self, user_cache):
+        self.subscriptionId = user_cache['subscriptionId']
+        self.expiration = user_cache['expiration']
+        self.access_token = user_cache['access_token']
+        self.config = user_cache['config']
+        self.tenant_uuid = user_cache['tenant_uuid']
+        self.userId = user_cache['userId']
+
+
 class SubscriptionRenewer:
     def __init__(self, config, cache):
         self._cache = cache
@@ -55,27 +65,41 @@ class SubscriptionRenewer:
     def _loop(self):
         while not self._tombstone.is_set():
             for user in self.users:
-                user_cache = self._cache.get(user)
-                if not user_cache:
+                u = self._cache.get(user)
+                if not u:
                     self.delete_user(user)
                     continue
-                subscriptionId = user_cache['subscriptionId']
-                expiration = user_cache['expiration']
-                if self._is_expired(expiration):
-                    access_token = user_cache['access_token']
-                    external_config = user_cache['config']
-                    teams = TeamsPresence(self._config, access_token, external_config)
-                    subscriptionId, expiration = teams.renew_subscription(subscriptionId)
-                    cache = {
-                        "subscriptionId": subscriptionId,
-                        "expiration": expiration,
-                        "access_token": access_token,
-                        "config": external_config
-                    }
-                    self._cache.update(user, cache)
+
+                user_cache = UserCache(u)
+                if self._is_expired(user_cache.expiration):
+                    teams = TeamsPresence(self._config, user_cache.access_token, user_cache.config)
+                    renew, expiration = teams.renew_subscription(user_cache.subscriptionId)
+                    if renew.status_code == 200:
+                        user_cache.expiration = expiration
+                    elif renew.status_code == 401:
+                        _cache = self._renew_external_token(user_cache, user)
+                        continue
+                    elif renew.status_code == 404:
+                        subscriptionId, expiration = teams.create_subscription(user_cache.userId)
+                        user_cache.subscriptionId = subscriptionId
+                        user_cache.expiration = expiration
+                    self._cache.update(user, user_cache.__dict__)
             time.sleep(1)
 
+    def _renew_external_token(self, user_cache, user_uuid):
+        logger.info(f"[microsoft teams presence] Update cache access token for: {user_uuid}")
+        token_data, _ = Service.get_external_data(
+            self._config,
+            user_uuid,
+            user_cache.tenant_uuid,
+        )
+        user_cache.access_token = token_data['access_token']
+        self._cache.update(user_uuid, user_cache.__dict__)
+        return user_cache
+
     def _is_expired(self, expiration):
+        if expiration == None:
+            return True
         if expiration:
             now = datetime.now(timezone.utc)
             duration = int((iso8601.parse_date(expiration) - now).total_seconds())
@@ -129,7 +153,8 @@ class Service:
                 tenant_uuid,
             )
             teams = TeamsPresence(self._config, external_tokens['access_token'], external_config)
-            subscriptionId, expiration = teams.set_subscription(teams.get_user())
+            userId = teams.get_user()
+            subscriptionId, expiration = teams.create_subscription(userId)
 
             logger.info(f"[microsoft teams presence] User registered: {tenant_uuid}/{user_uuid}")
 
@@ -137,13 +162,15 @@ class Service:
             user_external_config_cache = UserExternalConfigCache(
                 get_memcached(self._config['memcached'])
             )
-            cache = {
+            cache = UserCache({
                 "subscriptionId": subscriptionId,
                 "expiration": expiration,
                 "access_token": external_tokens['access_token'],
-                "config": external_config
-            }
-            user_external_config_cache.add(user_uuid, cache)
+                "config": external_config,
+                "tenant_uuid": tenant_uuid,
+                "userId": userId
+            })
+            user_external_config_cache.add(user_uuid, cache.__dict__)
 
     def on_external_auth_deleted(self, body, event):
         if body['data'].get('external_auth_name') == 'microsoft':
@@ -324,7 +351,7 @@ class TeamsPresence:
         if r.status_code != 200:
             print(r.text)
 
-    def set_subscription(self, userId):
+    def create_subscription(self, userId):
         data = {
             "changeType": "updated",
             "notificationUrl": f"https://{self.domain}/api/chatd/1.0/users/{self.user_uuid}/teams/presence",
@@ -355,8 +382,7 @@ class TeamsPresence:
             print(r.text)
         elif r.status_code == 200:
             logger.info(f"[microsoft teams presence] A subscription has been renewed.")
-            return (subscriptionId, expiration)
-        return (None, None)
+        return (r, expiration)
 
     def delete_subscription(self, subscriptionId):
         r = requests.delete(f"{self.graph}/subscriptions/{subscriptionId}", headers=self._headers())
