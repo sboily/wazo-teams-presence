@@ -4,7 +4,7 @@ version: 0.0.1
 author: Sylvain Boily
 display_name: Presence Teams
 plugin_format_version: 1
-min_wazo_version: 22.03
+min_wazo_version: 22.05
 debian_depends:
   - wazo-chatd-client-python3
   - memcached

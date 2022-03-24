@@ -219,7 +219,7 @@ class Service:
     @classmethod
     def get_external_data(cls, config, user_uuid, tenant_uuid):
         auth = cls.get_auth(config)
-        external_tokens = cls.get_external_token(config, user_uuid)
+        external_tokens = cls.get_external_token(config, user_uuid, tenant_uuid)
         external_config = auth.external.get_config('microsoft', tenant_uuid)
         external_config['user_uuid'] = user_uuid
 
@@ -233,10 +233,10 @@ class Service:
         return (external_tokens, external_config)
 
     @classmethod
-    def get_external_token(cls, config, user_uuid):
+    def get_external_token(cls, config, user_uuid, tenant_uuid):
         auth = cls.get_auth(config)
         try:
-            return auth.external.get('microsoft', user_uuid)
+            return auth.external.get('microsoft', user_uuid, tenant_uuid)
         except requests.exceptions.HTTPError:
             raise HookExpectedError(
                 "[microsoft teams presence] No existing external token for this user"
@@ -255,7 +255,8 @@ class Service:
             get_memcached(config['memcached'])
         )
         external_config = user_external_config_cache.get(user_uuid)['config']
-        external_token = cls.get_external_token(config, user_uuid)
+        tenant_uuid = user_external_config_cache.get(user_uuid)['tenant_uuid']
+        external_token = cls.get_external_token(config, user_uuid, tenant_uuid)
         teams = TeamsPresence(config, external_token['access_token'], external_config)
 
         data = event.get('data')
