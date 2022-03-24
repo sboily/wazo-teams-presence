@@ -2,8 +2,8 @@ wazo-chatd:
   acl:
     - 'chatd.users.*.presences.update'
     - 'auth.tenants.read'
+    _ 'confd.users.*.services.dnd.update'
 wazo-webhookd:
-  system_user: wazo-webhookd
   acl:
     - 'auth.*.external.config.read'
     - 'auth.users.*.external.*.read'
