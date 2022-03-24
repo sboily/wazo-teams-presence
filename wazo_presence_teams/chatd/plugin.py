@@ -17,6 +17,7 @@ PRESENCE_STATE_MAP = {
     'Available': 'available',
     'Busy': 'unavailable',
     'Away': 'away',
+    'BeRightBack': 'away',
     'DoNotDisturb': 'dnd'
 }
 
