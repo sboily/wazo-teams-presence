@@ -372,6 +372,8 @@ class TeamsPresence:
             print(r.status_code)
             print(r.json())
 
+        return (None, None)
+
     def renew_subscription(self, subscriptionId):
         expiration = self._expiration(self.expiration_time)
         data = {
