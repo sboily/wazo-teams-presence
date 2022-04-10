@@ -399,8 +399,12 @@ class TeamsPresence:
         if r.status_code != 200:
             print(r.text)
         elif r.status_code == 200:
-            data = r.json()['value'][0]
-            return (data['id'], data['expirationDateTime'])
+            data = None
+            try:
+                data = r.json()['value'][0]
+                return (data['id'], data['expirationDateTime'])
+            except IndexError as e:
+                logger.error(f"[microsoft teams presence] List of subscription is empty: {e}")
         return (None, None)
 
     def _headers(self):
