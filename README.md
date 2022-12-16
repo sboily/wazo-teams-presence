@@ -1,3 +1,9 @@
+PLEASE NOTE THE REPOSITORY IS DEPRECATED AND DO NOT USE WITH WAZO > 22.16, THIS FEATURE HAS BEEN DEVELOPED IN 22.17.
+
+PLEASE REMOVE THIS MODULE IN > 22.17.
+
+---------------
+
 # wazo-presence-teams
 
 Add endpoint to get presence from teams from subscription and set it to Wazo.
